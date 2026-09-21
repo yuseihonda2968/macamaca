@@ -90,7 +90,7 @@ textarea::placeholder{color:#9CA3AF}
 .step b{display:block;font-size:14px;margin-bottom:2px}
 .step span{font-size:12px;color:var(--sub);line-height:1.6}
 
-/* ---------- 回答一覧 ---------- */
+/* ---------- 一覧（回答一覧・履歴） ---------- */
 .sum-title{margin:24px 16px 4px;font-size:20px;font-weight:700}
 .sum-sub{margin:0 16px 12px;font-size:12px;color:var(--sub);line-height:1.6}
 .sum-item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:#fff;border:0;
@@ -101,7 +101,7 @@ textarea::placeholder{color:#9CA3AF}
 .sum-item .ed{flex:0 0 auto;font-size:11px;color:var(--main);font-weight:700}
 .sum-item .body{flex:1;min-width:0}
 
-/* ---------- 結果 ---------- */
+/* ---------- 結果カード ---------- */
 .card{margin:16px;padding:18px 16px;border:1px solid var(--line);border-radius:16px}
 .card h3{margin:0 0 10px;font-size:14px;color:var(--main)}
 .card ul{margin:0;padding:0;list-style:none}
@@ -116,22 +116,16 @@ textarea::placeholder{color:#9CA3AF}
   animation:spin .9s linear infinite;margin-bottom:22px}
 @keyframes spin{to{transform:rotate(360deg)}}
 .center h2{font-size:18px;margin:0 0 8px}
-.center p{margin:0;color:var(--sub);font-size:13px;line-height:1.7}
+.center p{margin:0;color:var(--sub);font-size:13px;line-height:1.7;white-space:pre-line}
 .err-ico{font-size:40px;margin-bottom:12px}
 </style>
 </head>
 <body>
 <div id="app"></div>
 
+<!-- 設定（LIFF_ID / GAS_URL）は config.js にあります -->
+<script src="config.js"></script>
 <script>
-/* ================================================================
- * 設定（ここだけ書き換えてください）
- * ================================================================ */
-const CONFIG = {
-  LIFF_ID: '2011682490-agpxja2j',                                   // LINE Developers > LIFF のID（例: 1234567890-AbCdEfGh）
-  GAS_URL: 'https://script.google.com/macros/s/AKfycbxsA5Bn3bqikX48rbdzZu8C_guIEHiKXdxqJxR5rKEWVfyA3E8r4wQV20rp9NuC3OzRvw/exec'    // GASウェブアプリの /exec URL
-};
-
 /* ================================================================
  * 状態
  * ================================================================ */
@@ -146,7 +140,11 @@ const S = {
   userId: 'anon',
   sig: '',
   result: null,
-  error: ''
+  history: [],     // 過去の結果 [{at, answers:[{question,current}], result}]
+  hIdx: 0,
+  error: '',
+  retryAct: 'reload',
+  errBack: ''      // エラー画面の「戻る」先: '' | 'summary' | 'home'
 };
 
 const app = document.getElementById('app');
@@ -206,8 +204,11 @@ function go(screen, dir) {
 }
 
 function render() {
-  const fn = { boot: rBoot, intro: rIntro, question: rQuestion, summary: rSummary,
-               loading: rLoading, result: rResult, error: rError }[S.screen];
+  const fn = {
+    boot: rBoot, intro: rIntro, question: rQuestion, summary: rSummary,
+    loading: rLoading, result: rResult, error: rError,
+    hloading: rHistLoading, history: rHistory, histDetail: rHistDetail
+  }[S.screen];
   app.innerHTML = '<div class="screen ' + (S.dir === 'back' ? 'back' : '') + '">' + fn() + '</div>';
   if (S.screen === 'question') updateQuestionUI();
   if (S.screen === 'loading') startLoadingMessages();
@@ -228,6 +229,7 @@ function rIntro() {
   if (done === total && total > 0) {
     btns += '<button class="btn ghost" data-act="review">回答一覧を見る</button>';
   }
+  btns += '<button class="btn ghost" data-act="history">📜 過去の結果を見る</button>';
   if (done > 0) btns += '<button class="linkbtn" style="align-self:center" data-act="reset">回答をリセット</button>';
   return `
     <div class="hero">
@@ -312,7 +314,7 @@ const LOADING_MSGS = ['ご家族の条件を整理しています…', 'エリ�
                       '予算と通勤条件を試算しています…', 'ハザードマップを確認しています…'];
 function rLoading() {
   return '<div class="center"><div class="spinner"></div><h2>シミュレーション中</h2><p id="loadMsg">' + LOADING_MSGS[0] +
-         '</p><p style="margin-top:14px">10〜30秒ほどかかります。<br>画面を閉じずにお待ちください。</p></div>';
+         '</p><p style="margin-top:14px">最大1分ほどかかることがあります。\n画面を閉じずにお待ちください。</p></div>';
 }
 function startLoadingMessages() {
   let n = 0;
@@ -323,33 +325,81 @@ function startLoadingMessages() {
   }, 2600);
 }
 
-/* ---------- 結果 ---------- */
-function rResult() {
-  const d = S.result;
+/* ---------- 結果（新規・履歴で共通の表示部品） ---------- */
+function resultView(d, eyebrow) {
   const li = arr => '<ul>' + (arr || []).map(t => '<li>' + esc(t) + '</li>').join('') + '</ul>';
   return `
     <div class="hero">
-      <div class="eyebrow">SIMULATION RESULT</div>
-      <p style="margin-top:10px">あなたにおすすめのエリア</p>
+      <div class="eyebrow">${esc(eyebrow)}</div>
+      <p style="margin-top:10px">おすすめのエリア</p>
       <div class="area">📍 ${esc(d.area)}</div>
     </div>
-    <div class="card"><h3>💡 あなた向けのアドバイス</h3>${li(d.personalizedAdvice)}</div>
+    <div class="card"><h3>💡 アドバイス</h3>${li(d.personalizedAdvice)}</div>
     <div class="card"><h3>🏙️ このエリアをおすすめする理由</h3>${li(d.reasons)}</div>
-    <div class="card"><h3>🌊 ハザードマップ</h3><div class="plain">${esc(d.hazardLevel)}</div></div>
+    <div class="card"><h3>🌊 ハザードマップ</h3><div class="plain">${esc(d.hazardLevel)}</div></div>`;
+}
+
+function rResult() {
+  return resultView(S.result, 'SIMULATION RESULT') + `
     <div class="btns" style="margin-bottom:24px">
       <button class="btn" data-act="start">もう一度回答する</button>
+      <button class="btn ghost" data-act="history">📜 過去の結果を見る</button>
       <button class="btn ghost" data-act="review">回答を見直す</button>
       <button class="btn ghost" data-act="close">LINEに戻る</button>
     </div>`;
 }
 
+/* ---------- 過去の結果 ---------- */
+const fmtAt = s => String(s || '').replace(/-/g, '/').slice(0, 16);
+
+function rHistLoading() {
+  return '<div class="center"><div class="spinner"></div><h2>履歴を読み込み中…</h2></div>';
+}
+
+function rHistory() {
+  const list = S.history.length
+    ? S.history.map((h, i) => `
+        <button class="sum-item" data-act="hdetail" data-i="${i}">
+          <div class="body">
+            <div class="qq">${esc(fmtAt(h.at))}</div>
+            <div class="aa">📍 ${esc(h.result.area)}</div>
+            <div class="qq" style="margin:4px 0 0">${esc((h.result.personalizedAdvice || [])[0] || '')}</div>
+          </div>
+          <span class="ed">見る ›</span>
+        </button>`).join('')
+    : '<div class="center" style="min-height:40vh"><p>まだ保存された結果はありません。\nシミュレーションを実行すると、ここに残ります。</p></div>';
+  return `
+    <div class="sum-title">📜 過去のシミュレーション結果</div>
+    <p class="sum-sub">新しい順に、最大20件まで表示します。</p>
+    <div style="border-bottom:1px solid var(--line)">${list}</div>
+    <div class="bar"><div class="bar-in">
+      <button class="btn ghost" data-act="home">トップへ戻る</button>
+    </div></div>`;
+}
+
+function rHistDetail() {
+  const h = S.history[S.hIdx];
+  const qa = (h.answers || []).map((x, i) => `
+    <div style="margin-bottom:14px">
+      <div style="font-size:11px;color:var(--sub);margin-bottom:3px">Q${i + 1}. ${esc(x.question)}</div>
+      <div style="font-size:14px;font-weight:700;word-break:break-word">${esc(x.current)}</div>
+    </div>`).join('');
+  return resultView(h.result, fmtAt(h.at) + ' の結果') + `
+    <div class="card"><h3>📝 このときの回答</h3>${qa}</div>
+    <div class="bar"><div class="bar-in">
+      <button class="btn ghost" data-act="hback">一覧へ戻る</button>
+    </div></div>`;
+}
+
 /* ---------- エラー ---------- */
 function rError() {
+  const back = S.errBack === 'summary' ? ['review', '回答一覧へ戻る']
+             : S.errBack === 'home' ? ['home', 'トップへ戻る'] : null;
   return `<div class="center"><div class="err-ico">⚠️</div><h2>うまくいきませんでした</h2>
     <p>${esc(S.error)}</p>
     <div class="btns" style="width:100%;max-width:320px">
-      <button class="btn" data-act="${S.qs.length ? 'submit' : 'reload'}">もう一度試す</button>
-      ${S.qs.length ? '<button class="btn ghost" data-act="review">回答一覧へ戻る</button>' : ''}
+      <button class="btn" data-act="${S.retryAct || 'reload'}">もう一度試す</button>
+      ${back ? '<button class="btn ghost" data-act="' + back[0] + '">' + back[1] + '</button>' : ''}
     </div></div>`;
 }
 
@@ -422,6 +472,9 @@ function act(name, el) {
       break;
 
     case 'edit':    S.idx = +el.dataset.i; S.editing = true; go('question'); break;
+    case 'history': loadHistory(); break;
+    case 'hdetail': S.hIdx = +el.dataset.i; go('histDetail'); break;
+    case 'hback':   go('history', 'back'); break;
     case 'submit':  submit(); break;
     case 'reload':  location.reload(); break;
     case 'close':   if (liff.isInClient()) liff.closeWindow(); else window.close(); break;
@@ -429,8 +482,34 @@ function act(name, el) {
 }
 
 /* ================================================================
- * 結果の取得（GAS → Gemini）
+ * GAS API（結果の取得・履歴の取得）
  * ================================================================ */
+
+/** GASのAPIを呼ぶ共通関数（IDトークン付き）。失敗時は Error を投げる */
+async function callApi(payload) {
+  const idToken = liff.getIDToken();
+  if (!idToken) {
+    throw new Error('IDトークンを取得できませんでした。LINE DevelopersのLIFFアプリ設定で、スコープの「openid」にチェックが入っているか確認してください。');
+  }
+  const res = await fetch(CONFIG.GAS_URL, {
+    method: 'POST',
+    // Content-Typeを指定しない(text/plain)ことでCORSプリフライトを回避する
+    body: JSON.stringify(Object.assign({ idToken: idToken }, payload))
+  });
+  const data = await res.json();
+  if (!data.ok) {
+    if (data.code === 'AUTH' && !sessionStorage.getItem('hs_relogin')) {
+      // IDトークン期限切れの可能性 → 1回だけ自動で再ログインして戻ってくる
+      sessionStorage.setItem('hs_relogin', '1');
+      liff.logout(); liff.login({ redirectUri: location.href });
+      return new Promise(() => {}); // ページ遷移するので解決しない
+    }
+    throw new Error(data.error || 'エラーが発生しました。');
+  }
+  sessionStorage.removeItem('hs_relogin');
+  return data;
+}
+
 let submitting = false;
 async function submit() {
   if (submitting) return;                 // 連打防止
@@ -438,33 +517,28 @@ async function submit() {
   submitting = true;
   go('loading');
   try {
-    const idToken = liff.getIDToken();
-    if (!idToken) {
-      throw new Error('IDトークンを取得できませんでした。LINE DevelopersのLIFFアプリ設定で、スコープの「openid」にチェックが入っているか確認してください。');
-    }
-    const res = await fetch(CONFIG.GAS_URL, {
-      method: 'POST',
-      // Content-Typeを指定しない(text/plain)ことでCORSプリフライトを回避する
-      body: JSON.stringify({ action: 'result', idToken: idToken, answers: S.qs.map((_, i) => composed(i)) })
-    });
-    const data = await res.json();
-    if (!data.ok) {
-      if (data.code === 'AUTH' && !sessionStorage.getItem('hs_relogin')) {
-        // IDトークン期限切れの可能性 → 1回だけ自動で再ログインして戻ってくる
-        sessionStorage.setItem('hs_relogin', '1');
-        liff.logout(); liff.login({ redirectUri: location.href });
-        return;
-      }
-      throw new Error(data.error || 'エラーが発生しました。');
-    }
-    sessionStorage.removeItem('hs_relogin');
+    const data = await callApi({ action: 'result', answers: S.qs.map((_, i) => composed(i)) });
     S.result = data.result;
     go('result');
   } catch (e) {
     S.error = e.message || '通信に失敗しました。電波の良い場所でもう一度お試しください。';
+    S.retryAct = 'submit'; S.errBack = 'summary';
     go('error');
   } finally {
     submitting = false;
+  }
+}
+
+async function loadHistory() {
+  go('hloading');
+  try {
+    const data = await callApi({ action: 'history' });
+    S.history = data.items || [];
+    go('history');
+  } catch (e) {
+    S.error = e.message || '履歴を読み込めませんでした。';
+    S.retryAct = 'history'; S.errBack = 'home';
+    go('error');
   }
 }
 
@@ -475,7 +549,7 @@ async function boot() {
   render(); // ローディング表示
   try {
     if (CONFIG.LIFF_ID.indexOf('YOUR_') === 0 || CONFIG.GAS_URL.indexOf('XXXX') >= 0) {
-      throw new Error('index.html 冒頭の CONFIG（LIFF_ID / GAS_URL）を設定してください。');
+      throw new Error('config.js の LIFF_ID / GAS_URL を設定してください。');
     }
     await liff.init({ liffId: CONFIG.LIFF_ID });
     if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
@@ -495,6 +569,7 @@ async function boot() {
     go('intro');
   } catch (e) {
     S.error = e.message || '起動に失敗しました。LINEアプリから開き直してください。';
+    S.retryAct = 'reload'; S.errBack = '';
     go('error');
   }
 }
