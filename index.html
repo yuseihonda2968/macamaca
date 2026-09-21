@@ -439,7 +439,9 @@ async function submit() {
   go('loading');
   try {
     const idToken = liff.getIDToken();
-    if (!idToken) throw authError();
+    if (!idToken) {
+      throw new Error('IDトークンを取得できませんでした。LINE DevelopersのLIFFアプリ設定で、スコープの「openid」にチェックが入っているか確認してください。');
+    }
     const res = await fetch(CONFIG.GAS_URL, {
       method: 'POST',
       // Content-Typeを指定しない(text/plain)ことでCORSプリフライトを回避する
@@ -447,24 +449,24 @@ async function submit() {
     });
     const data = await res.json();
     if (!data.ok) {
-      if (data.code === 'AUTH') throw authError();
+      if (data.code === 'AUTH' && !sessionStorage.getItem('hs_relogin')) {
+        // IDトークン期限切れの可能性 → 1回だけ自動で再ログインして戻ってくる
+        sessionStorage.setItem('hs_relogin', '1');
+        liff.logout(); liff.login({ redirectUri: location.href });
+        return;
+      }
       throw new Error(data.error || 'エラーが発生しました。');
     }
+    sessionStorage.removeItem('hs_relogin');
     S.result = data.result;
     go('result');
   } catch (e) {
-    if (e.code === 'AUTH') {
-      // IDトークン期限切れ → 再ログインして戻ってくる
-      liff.logout(); liff.login({ redirectUri: location.href });
-      return;
-    }
     S.error = e.message || '通信に失敗しました。電波の良い場所でもう一度お試しください。';
     go('error');
   } finally {
     submitting = false;
   }
 }
-function authError() { const e = new Error('auth'); e.code = 'AUTH'; return e; }
 
 /* ================================================================
  * 起動
