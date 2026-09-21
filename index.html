@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#06C755">
+<title>住まい選びシミュレーション</title>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+:root{
+  --main:#06C755; --main-d:#05A648; --main-l:#E8F8EE;
+  --text:#1F2937; --sub:#6B7280; --bg:#F5F7FA; --line:#E5E7EB; --danger:#EF4444;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:#fff;color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
+  -webkit-text-size-adjust:100%}
+button{font:inherit;color:inherit;cursor:pointer}
+#app{max-width:560px;margin:0 auto;min-height:100vh;min-height:100dvh;position:relative;overflow-x:hidden}
+.screen{animation:inFwd .26s ease both;padding-bottom:calc(120px + env(safe-area-inset-bottom))}
+.screen.back{animation-name:inBack}
+@keyframes inFwd{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:none}}
+@keyframes inBack{from{opacity:0;transform:translateX(-16px)}to{opacity:1;transform:none}}
+
+/* ---------- 上部バー ---------- */
+.topbar{position:sticky;top:0;z-index:5;background:#fff;
+  padding:calc(12px + env(safe-area-inset-top)) 16px 12px;border-bottom:1px solid var(--line)}
+.topbar .row{display:flex;justify-content:space-between;align-items:center}
+.q-no{color:var(--main);font-weight:700;font-size:12px;letter-spacing:.06em}
+.linkbtn{background:none;border:0;color:var(--sub);font-size:12px;padding:6px 0 6px 12px}
+.progress{height:6px;background:var(--line);border-radius:3px;margin-top:8px;overflow:hidden}
+.progress>i{display:block;height:100%;background:var(--main);border-radius:3px;transition:width .35s ease}
+
+/* ---------- 質問 ---------- */
+h1.q{font-size:20px;line-height:1.5;margin:22px 16px 10px;font-weight:700}
+.meta{display:flex;align-items:center;justify-content:space-between;margin:0 16px 16px}
+.badge{background:var(--main-l);color:var(--main);font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px}
+.count{font-size:12px;color:var(--sub)}
+.count b{color:var(--main)}
+.opts{padding:0 16px}
+.opt{display:flex;align-items:center;gap:14px;width:100%;text-align:left;
+  background:var(--bg);border:1.5px solid var(--line);border-radius:14px;
+  padding:16px 14px;margin:0 0 10px;font-size:15px;line-height:1.5;
+  transition:transform .08s ease,background .15s,border-color .15s;user-select:none;-webkit-user-select:none}
+.opt:active{transform:scale(.985)}
+.opt.on{background:var(--main-l);border-color:var(--main);font-weight:700}
+.box{flex:0 0 24px;width:24px;height:24px;border:2px solid #C4C9D0;border-radius:7px;background:#fff;
+  display:grid;place-items:center;transition:background .15s,border-color .15s}
+.opt.on .box{background:var(--main);border-color:var(--main)}
+.box svg{width:14px;height:14px;fill:none;stroke:#fff;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;
+  transform:scale(0);transition:transform .2s cubic-bezier(.34,1.56,.64,1)}
+.opt.on .box svg{transform:scale(1)}
+.opt .txt{flex:1;min-width:0;word-break:break-word}
+.opt.other{background:#fff;border-style:dashed;border-color:#C4C9D0}
+.opt.other.on{border-style:solid;border-color:var(--main);background:var(--main-l)}
+.other-input{display:none;padding:0 16px;margin:-2px 0 12px}
+.other-input.show{display:block;animation:inFwd .2s ease both}
+textarea{width:100%;min-height:88px;resize:none;border:1.5px solid var(--main);border-radius:12px;
+  padding:12px;font:inherit;font-size:16px;color:var(--text);background:#fff;outline:none}
+textarea::placeholder{color:#9CA3AF}
+.hint{font-size:11px;color:var(--sub);text-align:right;margin-top:4px}
+
+/* ---------- 下部固定バー ---------- */
+.bar{position:fixed;left:0;right:0;bottom:0;z-index:6;
+  background:linear-gradient(to top,#fff 78%,rgba(255,255,255,0));
+  padding:18px 16px calc(12px + env(safe-area-inset-bottom))}
+.bar-in{max-width:560px;margin:0 auto;display:flex;gap:10px}
+.btn{flex:1;border:0;border-radius:14px;padding:16px;font-size:16px;font-weight:700;
+  background:var(--main);color:#fff;box-shadow:0 6px 16px rgba(6,199,85,.28);
+  transition:transform .08s ease,background .15s,box-shadow .15s}
+.btn:active{transform:scale(.97);background:var(--main-d)}
+.btn:disabled{background:#D1D5DB;box-shadow:none;transform:none}
+.btn.ghost{background:#fff;color:var(--text);border:1.5px solid var(--line);box-shadow:none}
+.btn.ghost:active{background:var(--bg)}
+.btn.side{flex:0 0 96px}
+.btns{padding:0 16px;display:flex;flex-direction:column;gap:10px;margin-top:20px}
+.btns .btn{flex:none;width:100%}
+
+/* ---------- ヒーロー（トップ・結果） ---------- */
+.hero{background:var(--main);color:#fff;padding:calc(36px + env(safe-area-inset-top)) 24px 32px;
+  border-radius:0 0 28px 28px}
+.hero .eyebrow{font-size:11px;font-weight:700;letter-spacing:.14em;color:#D5F5E1}
+.hero h2{margin:8px 0 6px;font-size:26px;line-height:1.35}
+.hero p{margin:0;color:#E8F8EE;font-size:14px;line-height:1.6}
+.hero .area{font-size:24px;font-weight:700;line-height:1.4;margin-top:6px}
+.steps{padding:24px 20px 4px}
+.step{display:flex;gap:14px;align-items:flex-start;margin-bottom:18px}
+.step .n{flex:0 0 30px;height:30px;border-radius:50%;background:var(--main-l);color:var(--main);
+  font-weight:700;font-size:14px;display:grid;place-items:center}
+.step b{display:block;font-size:14px;margin-bottom:2px}
+.step span{font-size:12px;color:var(--sub);line-height:1.6}
+
+/* ---------- 回答一覧 ---------- */
+.sum-title{margin:24px 16px 4px;font-size:20px;font-weight:700}
+.sum-sub{margin:0 16px 12px;font-size:12px;color:var(--sub);line-height:1.6}
+.sum-item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:#fff;border:0;
+  border-top:1px solid var(--line);padding:14px 16px}
+.sum-item:active{background:var(--bg)}
+.sum-item .qq{font-size:11px;color:var(--sub);margin-bottom:3px}
+.sum-item .aa{font-size:14px;font-weight:700;word-break:break-word}
+.sum-item .ed{flex:0 0 auto;font-size:11px;color:var(--main);font-weight:700}
+.sum-item .body{flex:1;min-width:0}
+
+/* ---------- 結果 ---------- */
+.card{margin:16px;padding:18px 16px;border:1px solid var(--line);border-radius:16px}
+.card h3{margin:0 0 10px;font-size:14px;color:var(--main)}
+.card ul{margin:0;padding:0;list-style:none}
+.card li{position:relative;padding-left:16px;margin-bottom:8px;font-size:14px;line-height:1.7}
+.card li::before{content:"";position:absolute;left:2px;top:.72em;width:6px;height:6px;border-radius:50%;background:var(--main)}
+.card .plain{background:var(--bg);border-radius:10px;padding:12px;font-size:14px;line-height:1.7}
+
+/* ---------- ローディング / エラー ---------- */
+.center{min-height:80vh;min-height:80dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:24px}
+.spinner{width:52px;height:52px;border-radius:50%;border:5px solid var(--main-l);border-top-color:var(--main);
+  animation:spin .9s linear infinite;margin-bottom:22px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.center h2{font-size:18px;margin:0 0 8px}
+.center p{margin:0;color:var(--sub);font-size:13px;line-height:1.7}
+.err-ico{font-size:40px;margin-bottom:12px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+/* ================================================================
+ * 設定（ここだけ書き換えてください）
+ * ================================================================ */
+const CONFIG = {
+  LIFF_ID: 'YOUR_LIFF_ID',                                   // LINE Developers > LIFF のID（例: 1234567890-AbCdEfGh）
+  GAS_URL: 'https://script.google.com/macros/s/XXXX/exec'    // GASウェブアプリの /exec URL
+};
+
+/* ================================================================
+ * 状態
+ * ================================================================ */
+const S = {
+  qs: [],          // [{question, choices[]}]
+  sel: [],         // sel[i] = 選択された選択肢(文字列)の配列
+  other: [],       // other[i] = {on:boolean, text:string}
+  idx: 0,
+  editing: false,  // 回答一覧から修正中
+  screen: 'boot',
+  dir: 'fwd',
+  userId: 'anon',
+  sig: '',
+  result: null,
+  error: ''
+};
+
+const app = document.getElementById('app');
+const CHECK = '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* ================================================================
+ * 回答データのヘルパー
+ * ================================================================ */
+function composed(i) {
+  const q = S.qs[i];
+  const out = q.choices.filter(c => S.sel[i].indexOf(c) >= 0);
+  const o = S.other[i];
+  if (o.on && o.text.trim()) out.push(o.text.trim());
+  return out;
+}
+const isDone = i => composed(i).length > 0;
+const answeredCount = () => S.qs.reduce((n, _, i) => n + (isDone(i) ? 1 : 0), 0);
+const firstUnanswered = () => { for (let i = 0; i < S.qs.length; i++) if (!isDone(i)) return i; return -1; };
+
+/* ---- 端末内への保存（途中で閉じても続きから再開できる） ---- */
+const storeKey = () => 'hs_liff_v1_' + S.userId;
+function save() {
+  try {
+    localStorage.setItem(storeKey(), JSON.stringify({ sig: S.sig, sel: S.sel, other: S.other, idx: S.idx }));
+  } catch (e) { /* 保存できなくても動作は継続 */ }
+}
+function load() {
+  try {
+    const raw = localStorage.getItem(storeKey());
+    if (!raw) return;
+    const d = JSON.parse(raw);
+    if (d.sig !== S.sig) return; // 質問が変更されていたら破棄
+    if (Array.isArray(d.sel) && d.sel.length === S.qs.length) {
+      S.sel = d.sel; S.other = d.other; S.idx = Math.min(d.idx || 0, S.qs.length - 1);
+    }
+  } catch (e) { /* 無視 */ }
+}
+function initAnswers() {
+  S.sel = S.qs.map(() => []);
+  S.other = S.qs.map(() => ({ on: false, text: '' }));
+  S.idx = 0; S.editing = false;
+}
+function resetAnswers() { initAnswers(); save(); }
+
+/* ================================================================
+ * 画面遷移
+ * ================================================================ */
+let loadingTimer = null;
+function go(screen, dir) {
+  if (loadingTimer) { clearInterval(loadingTimer); loadingTimer = null; }
+  S.screen = screen;
+  S.dir = dir || 'fwd';
+  render();
+  window.scrollTo(0, 0);
+}
+
+function render() {
+  const fn = { boot: rBoot, intro: rIntro, question: rQuestion, summary: rSummary,
+               loading: rLoading, result: rResult, error: rError }[S.screen];
+  app.innerHTML = '<div class="screen ' + (S.dir === 'back' ? 'back' : '') + '">' + fn() + '</div>';
+  if (S.screen === 'question') updateQuestionUI();
+  if (S.screen === 'loading') startLoadingMessages();
+}
+
+/* ---------- 起動中 ---------- */
+function rBoot() {
+  return '<div class="center"><div class="spinner"></div><h2>読み込み中…</h2></div>';
+}
+
+/* ---------- トップ ---------- */
+function rIntro() {
+  const done = answeredCount(), total = S.qs.length;
+  let btns = '<button class="btn" data-act="start">回答する</button>';
+  if (done > 0 && done < total) {
+    btns += '<button class="btn ghost" data-act="resume">続きから回答する（' + done + ' / ' + total + '）</button>';
+  }
+  if (done === total && total > 0) {
+    btns += '<button class="btn ghost" data-act="review">回答一覧を見る</button>';
+  }
+  if (done > 0) btns += '<button class="linkbtn" style="align-self:center" data-act="reset">回答をリセット</button>';
+  return `
+    <div class="hero">
+      <div class="eyebrow">HOME SIMULATOR</div>
+      <h2>🏠 住まい選び<br>シミュレーション</h2>
+      <p>あなたの暮らしに合う街を、数分で。</p>
+    </div>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><div><b>質問に回答（全${total}問）</b><span>あてはまるものを複数選んで「次へ」。選択肢にない内容は「その他」で自由入力できます。</span></div></div>
+      <div class="step"><div class="n">2</div><div><b>結果を見る</b><span>AIがご家族に合うエリア・予算感・災害リスクを診断します。</span></div></div>
+    </div>
+    <div class="btns">${btns}</div>`;
+}
+
+/* ---------- 質問 ---------- */
+function rQuestion() {
+  const i = S.idx, q = S.qs[i], total = S.qs.length;
+  const pct = Math.round((i + 1) / total * 100);
+  const opts = q.choices.map((c, k) =>
+    `<button class="opt ${S.sel[i].indexOf(c) >= 0 ? 'on' : ''}" data-act="toggle" data-k="${k}">
+       <span class="box">${CHECK}</span><span class="txt">${esc(c)}</span></button>`).join('');
+  const o = S.other[i];
+  const isLast = i === total - 1;
+  const nextLabel = S.editing ? '決定して一覧へ' : (isLast ? '確認へ' : '次へ');
+  const prevLabel = S.editing ? '一覧へ' : '戻る';
+  return `
+    <div class="topbar">
+      <div class="row">
+        <span class="q-no">QUESTION ${i + 1} / ${total}</span>
+        <button class="linkbtn" data-act="home">最初に戻る</button>
+      </div>
+      <div class="progress"><i style="width:${pct}%"></i></div>
+    </div>
+    <h1 class="q">${esc(q.question)}</h1>
+    <div class="meta"><span class="badge">複数選択OK</span><span class="count" id="count"></span></div>
+    <div class="opts">
+      ${opts}
+      <button class="opt other ${o.on ? 'on' : ''}" data-act="toggleOther">
+        <span class="box">${CHECK}</span><span class="txt">✏️ その他（自由入力）</span></button>
+    </div>
+    <div class="other-input ${o.on ? 'show' : ''}" id="otherWrap">
+      <textarea id="otherText" maxlength="300" placeholder="自由に入力してください">${esc(o.text)}</textarea>
+      <div class="hint"><span id="otherLen">${o.text.length}</span> / 300</div>
+    </div>
+    <div class="bar"><div class="bar-in">
+      <button class="btn ghost side" data-act="prev">${prevLabel}</button>
+      <button class="btn" id="nextBtn" data-act="next">${nextLabel}</button>
+    </div></div>`;
+}
+
+/** 選択状況に応じて件数表示と「次へ」の有効/無効だけを更新（画面全体は再描画しない＝即座に反応） */
+function updateQuestionUI() {
+  const n = composed(S.idx).length;
+  const c = document.getElementById('count');
+  if (c) c.innerHTML = n > 0 ? '<b>' + n + '件</b>選択中' : '1つ以上選んでください';
+  const b = document.getElementById('nextBtn');
+  if (b) b.disabled = n === 0;
+}
+
+/* ---------- 回答一覧 ---------- */
+function rSummary() {
+  const rows = S.qs.map((q, i) => `
+    <button class="sum-item" data-act="edit" data-i="${i}">
+      <div class="body"><div class="qq">Q${i + 1}. ${esc(q.question)}</div>
+      <div class="aa">${isDone(i) ? esc(composed(i).join('、')) : '<span style="color:var(--danger)">未回答</span>'}</div></div>
+      <span class="ed">修正 ›</span>
+    </button>`).join('');
+  const ready = firstUnanswered() < 0;
+  return `
+    <div class="sum-title">🎉 回答内容の確認</div>
+    <p class="sum-sub">${ready ? '内容を確認して、結果をご覧ください。修正したい項目はタップで変更できます。'
+                              : '未回答の質問があります。タップして回答してください。'}</p>
+    <div style="border-bottom:1px solid var(--line)">${rows}</div>
+    <div class="bar"><div class="bar-in">
+      <button class="btn ghost side" data-act="home">最初に戻る</button>
+      <button class="btn" data-act="submit" ${ready ? '' : 'disabled'}>シミュレーション結果を見る</button>
+    </div></div>`;
+}
+
+/* ---------- 診断中 ---------- */
+const LOADING_MSGS = ['ご家族の条件を整理しています…', 'エリアの候補を比較しています…',
+                      '予算と通勤条件を試算しています…', 'ハザードマップを確認しています…'];
+function rLoading() {
+  return '<div class="center"><div class="spinner"></div><h2>シミュレーション中</h2><p id="loadMsg">' + LOADING_MSGS[0] +
+         '</p><p style="margin-top:14px">10〜30秒ほどかかります。<br>画面を閉じずにお待ちください。</p></div>';
+}
+function startLoadingMessages() {
+  let n = 0;
+  loadingTimer = setInterval(() => {
+    n = (n + 1) % LOADING_MSGS.length;
+    const el = document.getElementById('loadMsg');
+    if (el) el.textContent = LOADING_MSGS[n];
+  }, 2600);
+}
+
+/* ---------- 結果 ---------- */
+function rResult() {
+  const d = S.result;
+  const li = arr => '<ul>' + (arr || []).map(t => '<li>' + esc(t) + '</li>').join('') + '</ul>';
+  return `
+    <div class="hero">
+      <div class="eyebrow">SIMULATION RESULT</div>
+      <p style="margin-top:10px">あなたにおすすめのエリア</p>
+      <div class="area">📍 ${esc(d.area)}</div>
+    </div>
+    <div class="card"><h3>💡 あなた向けのアドバイス</h3>${li(d.personalizedAdvice)}</div>
+    <div class="card"><h3>🏙️ このエリアをおすすめする理由</h3>${li(d.reasons)}</div>
+    <div class="card"><h3>🌊 ハザードマップ</h3><div class="plain">${esc(d.hazardLevel)}</div></div>
+    <div class="btns" style="margin-bottom:24px">
+      <button class="btn" data-act="start">もう一度回答する</button>
+      <button class="btn ghost" data-act="review">回答を見直す</button>
+      <button class="btn ghost" data-act="close">LINEに戻る</button>
+    </div>`;
+}
+
+/* ---------- エラー ---------- */
+function rError() {
+  return `<div class="center"><div class="err-ico">⚠️</div><h2>うまくいきませんでした</h2>
+    <p>${esc(S.error)}</p>
+    <div class="btns" style="width:100%;max-width:320px">
+      <button class="btn" data-act="${S.qs.length ? 'submit' : 'reload'}">もう一度試す</button>
+      ${S.qs.length ? '<button class="btn ghost" data-act="review">回答一覧へ戻る</button>' : ''}
+    </div></div>`;
+}
+
+/* ================================================================
+ * 操作
+ * ================================================================ */
+app.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]');
+  if (!el || el.disabled) return;
+  act(el.dataset.act, el);
+});
+
+app.addEventListener('input', e => {
+  if (e.target.id !== 'otherText') return;
+  S.other[S.idx].text = e.target.value;
+  const len = document.getElementById('otherLen');
+  if (len) len.textContent = e.target.value.length;
+  updateQuestionUI();
+  save();
+});
+
+function act(name, el) {
+  const i = S.idx;
+  switch (name) {
+    case 'start':   S.editing = false; S.idx = 0; go('question'); break;
+    case 'resume': {
+      S.editing = false;
+      const u = firstUnanswered();
+      if (u < 0) go('summary'); else { S.idx = u; go('question'); }
+      break;
+    }
+    case 'review':  go('summary'); break;
+    case 'home':    S.editing = false; go('intro', 'back'); break;
+    case 'reset':
+      if (confirm('回答をすべてリセットしますか？')) { resetAnswers(); go('intro', 'back'); }
+      break;
+
+    case 'toggle': {
+      const c = S.qs[i].choices[+el.dataset.k];
+      const p = S.sel[i].indexOf(c);
+      if (p >= 0) S.sel[i].splice(p, 1); else S.sel[i].push(c);
+      el.classList.toggle('on');           // 画面遷移なし・即時に見た目が変わる
+      updateQuestionUI(); save();
+      if (navigator.vibrate) navigator.vibrate(8);
+      break;
+    }
+    case 'toggleOther': {
+      const o = S.other[i];
+      o.on = !o.on;
+      el.classList.toggle('on', o.on);
+      document.getElementById('otherWrap').classList.toggle('show', o.on);
+      if (o.on) setTimeout(() => {
+        const t = document.getElementById('otherText');
+        if (t) { t.focus(); t.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+      }, 60);
+      updateQuestionUI(); save();
+      break;
+    }
+
+    case 'next':
+      if (!isDone(i)) return;
+      if (S.editing) { S.editing = false; go('summary'); }
+      else if (i < S.qs.length - 1) { S.idx = i + 1; save(); go('question'); }
+      else go('summary');
+      break;
+    case 'prev':
+      if (S.editing) { S.editing = false; go('summary', 'back'); }
+      else if (i > 0) { S.idx = i - 1; save(); go('question', 'back'); }
+      else go('intro', 'back');
+      break;
+
+    case 'edit':    S.idx = +el.dataset.i; S.editing = true; go('question'); break;
+    case 'submit':  submit(); break;
+    case 'reload':  location.reload(); break;
+    case 'close':   if (liff.isInClient()) liff.closeWindow(); else window.close(); break;
+  }
+}
+
+/* ================================================================
+ * 結果の取得（GAS → Gemini）
+ * ================================================================ */
+let submitting = false;
+async function submit() {
+  if (submitting) return;                 // 連打防止
+  if (firstUnanswered() >= 0) { go('summary'); return; }
+  submitting = true;
+  go('loading');
+  try {
+    const idToken = liff.getIDToken();
+    if (!idToken) throw authError();
+    const res = await fetch(CONFIG.GAS_URL, {
+      method: 'POST',
+      // Content-Typeを指定しない(text/plain)ことでCORSプリフライトを回避する
+      body: JSON.stringify({ action: 'result', idToken: idToken, answers: S.qs.map((_, i) => composed(i)) })
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      if (data.code === 'AUTH') throw authError();
+      throw new Error(data.error || 'エラーが発生しました。');
+    }
+    S.result = data.result;
+    go('result');
+  } catch (e) {
+    if (e.code === 'AUTH') {
+      // IDトークン期限切れ → 再ログインして戻ってくる
+      liff.logout(); liff.login({ redirectUri: location.href });
+      return;
+    }
+    S.error = e.message || '通信に失敗しました。電波の良い場所でもう一度お試しください。';
+    go('error');
+  } finally {
+    submitting = false;
+  }
+}
+function authError() { const e = new Error('auth'); e.code = 'AUTH'; return e; }
+
+/* ================================================================
+ * 起動
+ * ================================================================ */
+async function boot() {
+  render(); // ローディング表示
+  try {
+    if (CONFIG.LIFF_ID.indexOf('YOUR_') === 0 || CONFIG.GAS_URL.indexOf('XXXX') >= 0) {
+      throw new Error('index.html 冒頭の CONFIG（LIFF_ID / GAS_URL）を設定してください。');
+    }
+    await liff.init({ liffId: CONFIG.LIFF_ID });
+    if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
+
+    const tok = liff.getDecodedIDToken();
+    if (tok && tok.sub) S.userId = tok.sub;
+
+    const res = await fetch(CONFIG.GAS_URL + '?action=questions');
+    const data = await res.json();
+    if (!data.ok || !data.questions || !data.questions.length) {
+      throw new Error('質問を読み込めませんでした。スプレッドシートの設定をご確認ください。');
+    }
+    S.qs = data.questions;
+    S.sig = S.qs.map(q => q.question + '|' + q.choices.join('/')).join('##');
+    initAnswers();   // ※保存はしない（保存済みの回答を上書きしないため）
+    load();
+    go('intro');
+  } catch (e) {
+    S.error = e.message || '起動に失敗しました。LINEアプリから開き直してください。';
+    go('error');
+  }
+}
+boot();
+</script>
+</body>
+</html>
