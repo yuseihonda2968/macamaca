@@ -326,8 +326,41 @@ function startLoadingMessages() {
 }
 
 /* ---------- 結果（新規・履歴で共通の表示部品） ---------- */
+const BUDGET_BADGE = {
+  ok:      { label: '無理のない予算です',    bg: 'var(--main-l)', fg: 'var(--main)' },
+  caution: { label: 'やや背伸びな予算です',   bg: '#FEF3C7',       fg: '#B45309' },
+  risk:    { label: '年収に対して厳しめです', bg: '#FEE2E2',       fg: 'var(--danger)' }
+};
+
 function resultView(d, eyebrow) {
   const li = arr => '<ul>' + (arr || []).map(t => '<li>' + esc(t) + '</li>').join('') + '</ul>';
+
+  const bc = d.budgetCheck;
+  const badge = bc && BUDGET_BADGE[bc.status];
+  const budgetHtml = badge ? `
+    <div class="card">
+      <h3>💰 予算の妥当性</h3>
+      <div class="plain" style="background:${badge.bg}">
+        <div style="font-weight:700;color:${badge.fg};margin-bottom:4px">${esc(badge.label)}</div>
+        <div style="font-size:13px;color:var(--text)">${esc(bc.comment)}</div>
+      </div>
+    </div>` : '';
+
+  const alts = d.alternativeAreas || [];
+  const altsHtml = alts.length ? `
+    <div class="card">
+      <h3>🔀 こんなエリアも候補に</h3>
+      ${alts.map(a => `
+        <div style="background:var(--bg);border-radius:10px;padding:12px;margin-bottom:10px">
+          <div style="font-weight:700;margin-bottom:2px">📍 ${esc(a.area)}</div>
+          <div style="font-size:12px;color:var(--main);font-weight:700;margin-bottom:4px">${esc(a.highlight)}</div>
+          <div style="font-size:13px;color:var(--sub)">${esc(a.reason)}</div>
+        </div>`).join('')}
+    </div>` : '';
+
+  const nexts = d.nextActions || [];
+  const nextsHtml = nexts.length ? `<div class="card"><h3>📌 次にやってみること</h3>${li(nexts)}</div>` : '';
+
   return `
     <div class="hero">
       <div class="eyebrow">${esc(eyebrow)}</div>
@@ -336,7 +369,8 @@ function resultView(d, eyebrow) {
     </div>
     <div class="card"><h3>💡 アドバイス</h3>${li(d.personalizedAdvice)}</div>
     <div class="card"><h3>🏙️ このエリアをおすすめする理由</h3>${li(d.reasons)}</div>
-    <div class="card"><h3>🌊 ハザードマップ</h3><div class="plain">${esc(d.hazardLevel)}</div></div>`;
+    <div class="card"><h3>🌊 ハザードマップ</h3><div class="plain">${esc(d.hazardLevel)}</div></div>
+    ${budgetHtml}${altsHtml}${nextsHtml}`;
 }
 
 function rResult() {
@@ -547,16 +581,22 @@ async function loadHistory() {
  * ================================================================ */
 async function boot() {
   render(); // ローディング表示
+  let stage = '設定の読み込み';
   try {
-    if (CONFIG.LIFF_ID.indexOf('YOUR_') === 0 || CONFIG.GAS_URL.indexOf('XXXX') >= 0) {
-      throw new Error('config.js の LIFF_ID / GAS_URL を設定してください。');
+    if (typeof CONFIG === 'undefined') {
+      throw new Error('config.js を読み込めませんでした。index.html と同じ場所（リポジトリ直下）に config.js をアップロードしてください。');
     }
+    if (CONFIG.LIFF_ID.indexOf('YOUR_') === 0 || CONFIG.GAS_URL.indexOf('XXXX') >= 0) {
+      throw new Error('config.js の LIFF_ID / GAS_URL が未設定です（初期値のままです）。');
+    }
+    stage = 'LIFFの初期化';
     await liff.init({ liffId: CONFIG.LIFF_ID });
     if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
 
     const tok = liff.getDecodedIDToken();
     if (tok && tok.sub) S.userId = tok.sub;
 
+    stage = '質問の読み込み（GAS）';
     const res = await fetch(CONFIG.GAS_URL + '?action=questions');
     const data = await res.json();
     if (!data.ok || !data.questions || !data.questions.length) {
@@ -568,7 +608,7 @@ async function boot() {
     load();
     go('intro');
   } catch (e) {
-    S.error = e.message || '起動に失敗しました。LINEアプリから開き直してください。';
+    S.error = (e.message || '起動に失敗しました。') + '\n（失敗した段階: ' + stage + '）';
     S.retryAct = 'reload'; S.errBack = '';
     go('error');
   }
